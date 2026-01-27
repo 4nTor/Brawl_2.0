@@ -69,4 +69,5 @@ public class PlayerAttackState : PlayerBaseState
         }
     }
 
+    public override bool CanMove() => false;
 }

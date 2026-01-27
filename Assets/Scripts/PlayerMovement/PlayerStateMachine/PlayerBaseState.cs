@@ -33,4 +33,14 @@ public abstract class PlayerBaseState
     }
 
     public void SetIsRootState(bool isRoot) => isRootState = isRoot;
+
+    public virtual bool CanRotate()
+    {
+        return currentSubState != null ? currentSubState.CanRotate() : true;
+    }
+
+    public virtual bool CanMove()
+    {
+        return currentSubState != null ? currentSubState.CanMove() : true;
+    }
 }

@@ -6,23 +6,34 @@ public class PlayerJumpState : PlayerBaseState
 
     public override void EnterState()
     {
-        ctx.animator.SetTrigger("Jump");
+        Debug.Log("[JumpState] Entered Jump SuperState");
+        SetSubState(factory.JumpRise());
+        ctx.animator.SetBool("isJump", true);
     }
     
     public override void UpdateState()
     {
-        Vector3 direction = new Vector3(ctx.moveInput.x, 0f, ctx.moveInput.y).normalized;
-        Vector3 moveDir = ctx.GetMoveDirection(direction);
-        ctx.characterController.Move(moveDir * ctx.Speed * Time.deltaTime);
-
-        if (ctx.isGrounded && ctx.velocity.y <= 0f)
-        {
-            if (ctx.moveInput.magnitude > 0.1f)
-                ctx.SwitchState(factory.Run());
-            else
-                ctx.SwitchState(factory.Idle());
-        }
+        // Check if SubState has finished (e.g., JumpLand transition to Idle/Run)
+        // This is handled inside Sub-States calling ctx.SwitchState() or similar?
+        // OR: Use CheckSwitchStates() if we want centralized logic.
+        
+        // Ensure substate is updated
+        base.UpdateState();
     }
 
-    public override void ExitState() { }
+    public override void ExitState()
+    {
+        Debug.Log("[JumpState] Exiting Jump SuperState");
+        ctx.animator.SetBool("isJump", false);
+        // Clean up substate
+        if(currentSubState != null)
+        {
+            currentSubState.ExitState();
+        }
+    }
+    
+    public override bool CanRotate()
+    {
+        return currentSubState != null ? currentSubState.CanRotate() : base.CanRotate();
+    }
 }

@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Photon.Pun;
+using Photon.Realtime;
 using Cinemachine;
 
 public class RoomManager : MonoBehaviourPunCallbacks
@@ -36,14 +37,52 @@ public class RoomManager : MonoBehaviourPunCallbacks
     {
         nickName = _name;
     }
+    private bool attemptJoinOnConnect = false;
+
     public void OnJoinButtonPressed()
     {
         Debug.Log(message: "Connecting. . . ");
         Debug.Log(roomName);
-        PhotonNetwork.JoinOrCreateRoom(roomName, new Photon.Realtime.RoomOptions(), null);
 
         nickNameUI.SetActive(false);
         connectingUI.SetActive(true);
+
+        if (PhotonNetwork.IsConnectedAndReady && PhotonNetwork.NetworkClientState != ClientState.Disconnecting)
+        {
+            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+        }
+        else
+        {
+            attemptJoinOnConnect = true;
+            Debug.Log("Waiting for connection to Master Server...");
+            
+            // Should usually be handled by RoomList, but ensure we don't stall
+            if (!PhotonNetwork.IsConnected && !PhotonNetwork.IsConnectedAndReady)
+            {
+                // Optionally trigger connection if not started
+                // PhotonNetwork.ConnectUsingSettings(); 
+            }
+        }
+    }
+
+    public override void OnConnectedToMaster()
+    {
+        if (attemptJoinOnConnect)
+        {
+            attemptJoinOnConnect = false;
+            Debug.Log("Connected to Master, Joining Room...");
+            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+        }
+    }
+
+    public override void OnJoinedLobby()
+    {
+        if (attemptJoinOnConnect)
+        {
+            attemptJoinOnConnect = false;
+            Debug.Log("Joined Lobby, Joining Room...");
+            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+        }
     }
     public override void OnJoinedRoom()
     {

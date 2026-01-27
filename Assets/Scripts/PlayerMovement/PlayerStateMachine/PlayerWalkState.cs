@@ -13,17 +13,15 @@ public class PlayerWalkState : PlayerBaseState
             ctx.SwitchState(factory.Idle());
             return;
         }
-
-        //Vector3 moveDir = ctx.GetMoveDirection().normalized;
-        //ctx.RotateTowardsMovementDirection(moveDir);
-        //ctx.characterController.Move(moveDir * ctx.Speed * Time.deltaTime);
+        
+        // Movement is handled centrally
     }
 
     public override void ExitState() { }
 
     public override void HandleJumpInput()
     {
-        if (ctx.isGrounded)
+        if (ctx.isGrounded || ctx.coyoteTimeCounter > 0f)
             ctx.SwitchState(factory.Jump());
     }
 }

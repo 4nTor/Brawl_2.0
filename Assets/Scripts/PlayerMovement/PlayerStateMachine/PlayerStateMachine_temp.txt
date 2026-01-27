@@ -58,26 +58,6 @@ public class PlayerStateMachine : MonoBehaviourPun
     [HideInInspector] public float grabCooldownTimer = 0f;
     private bool isGrabbing = false;
 
-    [Header("Physics & Movement")]
-    public float acceleration = 25f;
-    public float deceleration = 30f;
-    public float airAcceleration = 10f; // Lower than ground
-    public float airDeceleration = 0f;  // Usually 0 or low friction in air
-    public float maxFallSpeed = 40f;
-    
-    [Header("Jump Physics")]
-    public float fallGravityMult = 5f;     // Falling = High gravity
-    public float jumpCutGravityMult = 5f;    // Release jump = Very high gravity? Or just higher
-    // User requested: "Rising = Low, Falling = High, Fast fall = Very high" -> handled by logic
-    
-    [Header("Jump Assist")]
-    public float coyoteTime = 0.15f;
-    public float jumpBufferTime = 0.2f;
-    [HideInInspector] public float coyoteTimeCounter;
-    [HideInInspector] public float jumpBufferCounter;
-    
-    private Vector3 horizontalVelocity; // XZ velocity
-
     [Header("Power Ups")]
     public GameObject bubbleShieldEffect;
     public bool isShieldActive = false;
@@ -128,8 +108,7 @@ public class PlayerStateMachine : MonoBehaviourPun
         // Photon Setup
         if (photonView.IsMine)
         {
-            ThirdPersonCamera tpc = FindObjectOfType<ThirdPersonCamera>(true);
-            cam = tpc.GetComponentInChildren<Camera>(true);
+            cam = Camera.main;
             enabled = true;
             
         }
@@ -197,10 +176,7 @@ public class PlayerStateMachine : MonoBehaviourPun
     void InitializeControls()
     {
         _playerControls = new PlayerControls();
-        _playerControls.Movement.Jump.performed += ctx => {
-            isJumpPressed = true;
-            jumpBufferCounter = jumpBufferTime;
-        };
+        _playerControls.Movement.Jump.performed += ctx => isJumpPressed = true;
         _playerControls.Grab.GrabMouse.performed += OnGrabPressed;
         _playerControls.PowerUps.Shield.performed += ActivateShield;
         _playerControls.PowerUps.PullThroughAir.performed += ActivatePullThroughAir;
@@ -286,27 +262,14 @@ public class PlayerStateMachine : MonoBehaviourPun
     void Update()
     {
         UpdateGroundStatus();
-        HandleJumpTimers();
-        HandleMovement();
-        HandleGravity();
-        
-        // Final centralized move
-        Vector3 finalVelocity = horizontalVelocity;
-        finalVelocity.y = velocity.y;
-        characterController.Move(finalVelocity * Time.deltaTime);
-
+        ApplyGravity();
         HandleRotation();
         currentState.UpdateState();
-        
-        // Input reading
         moveInput = _playerControls.Movement.Keyboard.ReadValue<Vector2>();
-
-        // Jump processing handled via timers in State logic or here
-        // We will delegate to State's HandleJumpInput which checks timers now
-        if (jumpBufferCounter > 0)
+        if (isJumpPressed)
         {
             currentState.HandleJumpInput();
-            // isJumpPressed = false; // logic handled by timers now
+            isJumpPressed = false;
         }
         /*---------------------------------------------------------------------------*/
         if (isParryWindowOpen)
@@ -327,70 +290,13 @@ public class PlayerStateMachine : MonoBehaviourPun
             else if (isBlockHeld)
             {
                 
-                Debug.Log("Blocking ï¿½ parry not triggered");
+                Debug.Log("Blocking — parry not triggered");
             }
         }
 
         isBlockJustPressed = false;
         /*----------------------------------------------------------------------------*/
        
-    }
-
-    void HandleJumpTimers()
-    {
-        if (isGrounded)
-        {
-            coyoteTimeCounter = coyoteTime;
-        }
-        else
-        {
-            coyoteTimeCounter -= Time.deltaTime;
-        }
-
-        jumpBufferCounter -= Time.deltaTime;
-    }
-
-    void HandleMovement()
-    {
-        if (isDashing) 
-        {
-            // Dashing overwrites physics momentarily
-             horizontalVelocity = Vector3.zero;
-             return; 
-        }
-
-        Vector3 direction = new Vector3(moveInput.x, 0f, moveInput.y).normalized;
-
-        if (currentState != null && !currentState.CanMove())
-        {
-            direction = Vector3.zero;
-        }
-        
-        // Orient input to camera
-        Vector3 targetDir = Vector3.zero;
-        if (direction.magnitude >= 0.1f) {
-            targetDir = GetMoveDirection(direction);
-        }
-
-        Vector3 targetVelocity = targetDir * Speed;
-
-        // Acceleration logic (Ground vs Air)
-        float accelRate = isGrounded ? acceleration : airAcceleration;
-        float decelRate = isGrounded ? deceleration : airDeceleration;
-
-        // Separate handling for acceleration and deceleration can feel better
-        // Simple approach: MoveTowards
-        
-        if (horizontalVelocity.magnitude < targetVelocity.magnitude && targetVelocity.magnitude > 0.1f)
-        {
-            // Accelerating
-            horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accelRate * Time.deltaTime);
-        }
-        else
-        {
-            // Decelerating or Changing Direction
-             horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, decelRate * Time.deltaTime);
-        }
     }
 
     public void SwitchState(PlayerBaseState newState)
@@ -403,8 +309,7 @@ public class PlayerStateMachine : MonoBehaviourPun
     // ------------------ Basic physics and camera -------------------------------
     public void HandleRotation()
     {
-        if (currentState != null && !currentState.CanRotate()) return;
-
+        
         Vector3 direction = new Vector3(moveInput.x, 0f, moveInput.y).normalized;
         if (direction.magnitude >= 0.1f)
         {
@@ -423,55 +328,22 @@ public class PlayerStateMachine : MonoBehaviourPun
     void UpdateGroundStatus()
     {
         isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, gLayer);
-        animator.SetBool("IsGrounded", isGrounded);
-        if (isGrounded)
-        {
-            animator.SetBool("falling", false);
-            Debug.Log("Grounded");
-        }
     }
 
-    void HandleGravity() // Renamed from ApplyGravity to avoid confusion, though logic is changed
+    void ApplyGravity()
     {
-        // Grounded reset
         if (isGrounded && velocity.y < 0)
-        {
             velocity.y = -2f;
-        }
 
-        // Variable Gravity Logic
-        float currentGravityMultiplier = 1f;
-
-        if (velocity.y < 0)
-        {
-            // Falling
-            currentGravityMultiplier = fallGravityMult;
-        }
-        
-        velocity.y += gravity * currentGravityMultiplier * Time.deltaTime;
-        velocity.y = Mathf.Max(velocity.y, -maxFallSpeed);
-
-        // Movement moved to Update()
-        // characterController.Move(velocity * Time.deltaTime);
-
-        if (!isGrounded && velocity.y < -0.1f) 
-        {
-             animator.SetBool("falling", true);
-        }
+        velocity.y += gravity * Time.deltaTime;
+        characterController.Move(velocity * Time.deltaTime);
     }
 
 
-    //--------------------------- Animation Events Refrences ------------------------------------
     //--------------------------- Animation Events Refrences ------------------------------------
     public void ApplyJumpVelocity()
     {
-        // Only jump if allowed
-        if (coyoteTimeCounter > 0f || isGrounded) // State machine handles logic, this just applies force
-        {
-             velocity.y = Mathf.Sqrt(-2f * gravity * jumpHeight);
-             coyoteTimeCounter = 0f; // Consume coyote time
-             jumpBufferCounter = 0f; // Consume buffer
-        }
+        velocity.y = Mathf.Sqrt(-2f * gravity * jumpHeight);
     }
 
     public void ApplyAttackDamage()

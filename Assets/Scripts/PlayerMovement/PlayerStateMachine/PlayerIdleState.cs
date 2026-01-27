@@ -16,7 +16,14 @@ public class PlayerIdleState : PlayerBaseState
 
     public override void HandleJumpInput()
     {
-        if (ctx.isGrounded)
+        if (ctx.isGrounded || ctx.coyoteTimeCounter > 0f)
+        {
+            Debug.Log("[IdleState] Switching to Jump");
             ctx.SwitchState(factory.Jump());
+        }
+        else
+        {
+             Debug.Log("[IdleState] Jump Ignored - Not Grounded");
+        }
     }
 }
