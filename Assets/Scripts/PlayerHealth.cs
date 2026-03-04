@@ -5,15 +5,23 @@ using UnityEngine;
 
 public class PlayerHealth : MonoBehaviourPun
 {
-    public float health = 100f;
+    public float maxHealth = 100f;
+    public float health;
     public PlayerStateMachine _playerStateMachine;  // Reference to your existing shield script
     public bool isLocalPlayer;
+
+    [Header("UI")]
+    public HealthBarWorld healthBar;  // Assign the World Space Canvas's HealthBarWorld component
     void Start()
     {
+        health = maxHealth;
+
         if (_playerStateMachine == null)
-        {
-            _playerStateMachine = GetComponent<PlayerStateMachine>(); // Try auto-assign if on same object
-        }
+            _playerStateMachine = GetComponent<PlayerStateMachine>();
+
+        // Initialise bar at full health
+        if (healthBar != null)
+            healthBar.SetHealth(health, maxHealth);
     }
 
     [PunRPC]
@@ -27,7 +35,12 @@ public class PlayerHealth : MonoBehaviourPun
         }
 
         health -= damageAmount;
+        health = Mathf.Max(health, 0f);
         Debug.Log("Player health: " + health);
+
+        // Update world-space bar
+        if (healthBar != null)
+            healthBar.SetHealth(health, maxHealth);
 
         if (health <= 0)
         {

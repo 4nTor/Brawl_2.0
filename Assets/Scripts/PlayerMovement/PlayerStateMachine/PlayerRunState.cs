@@ -7,6 +7,13 @@ public class PlayerRunState : PlayerBaseState
     public override void EnterState()
     {
         ctx.animator.SetFloat("Speed", ctx.Speed * 2f);
+        
+        // Only CrossFade if we are coming from an Attack or Jump
+        if (ctx.animator.GetCurrentAnimatorStateInfo(0).IsName("AttackA") || 
+            ctx.animator.GetCurrentAnimatorStateInfo(0).IsName("AttackB"))
+        {
+            ctx.animator.CrossFadeInFixedTime("Idle", 0.15f);
+        }
     }
 
     public override void UpdateState()

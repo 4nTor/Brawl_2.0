@@ -4,7 +4,17 @@ public class PlayerWalkState : PlayerBaseState
 {
     public PlayerWalkState(PlayerStateMachine ctx, PlayerStateFactory factory) : base(ctx, factory) { }
 
-    public override void EnterState() => ctx.animator.SetFloat("Speed", ctx.Speed);
+    public override void EnterState()
+    {
+        ctx.animator.SetFloat("Speed", ctx.Speed);
+        
+        // Only CrossFade if we are coming from an Attack or Jump
+        if (ctx.animator.GetCurrentAnimatorStateInfo(0).IsName("AttackA") || 
+            ctx.animator.GetCurrentAnimatorStateInfo(0).IsName("AttackB"))
+        {
+            ctx.animator.CrossFadeInFixedTime("Idle", 0.15f);
+        }
+    }
 
     public override void UpdateState()
     {

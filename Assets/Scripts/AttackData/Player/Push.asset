@@ -19,4 +19,11 @@ MonoBehaviour:
   cooldown: 2
   animation: {fileID: 7400000, guid: 49aedfbdfd3831d48ac25d5f119855f9, type: 2}
   pushForce: 25
+  startupTime: 0
+  activeTime: 0
+  recoveryTime: 0
+  cancelStartTime: 0
+  cancelEndTime: 0.3
+  comboRoutes: []
+  hitStopDuration: 0.1
   AttackOriginName: Push

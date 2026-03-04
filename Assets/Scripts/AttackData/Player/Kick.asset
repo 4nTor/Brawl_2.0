@@ -19,4 +19,13 @@ MonoBehaviour:
   cooldown: 2
   animation: {fileID: 7400000, guid: b6279ae3714f3fe489e1696eed97f676, type: 2}
   pushForce: 13
+  startupTime: 0.1
+  activeTime: 0.2
+  recoveryTime: 0.3
+  cancelStartTime: 0
+  cancelEndTime: 0.3
+  comboRoutes:
+  - inputAction: Uppercut
+    targetAttack: {fileID: 11400000, guid: 9f2de3d5b62a9094bb99d8afc9521d36, type: 2}
+  hitStopDuration: 0.1
   AttackOriginName: Kick

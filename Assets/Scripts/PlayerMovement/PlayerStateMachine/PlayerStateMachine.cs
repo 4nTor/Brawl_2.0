@@ -95,8 +95,6 @@ public class PlayerStateMachine : MonoBehaviourPun
     public bool isAttacking;
 
     /*----------------------------------------------------------------*/
-    [Header("!!Testing_Parry!!")]
-    //temp variables for parry
     public bool isBlockHeld;
     public bool isBlockJustPressed;
     public bool isParryWindowOpen = false;
@@ -104,6 +102,18 @@ public class PlayerStateMachine : MonoBehaviourPun
     private float parryWindowStartTime;
     [SerializeField]private float parryWindowDuration = 0.5f;
     /*----------------------------------------------------------------*/
+
+    [Header("Combo System")]
+    public Queue<string> inputBuffer = new Queue<string>();
+    private float bufferTimer;
+    public float bufferWindow = 0.25f;
+    
+    [HideInInspector] public int attackAnimIndex = 0; // 0 or 1 for Ping Pong
+    
+    [Header("Attack Animation Placeholders")]
+    [Tooltip("Assign the placeholder clips used in AttackA and AttackB states (e.g., fist_1 and fist_2)")]
+    public AnimationClip attackAPlaceholder;
+    public AnimationClip attackBPlaceholder;
 
     private PlayerBaseState currentState;
     private PlayerStateFactory stateFactory;
@@ -129,9 +139,11 @@ public class PlayerStateMachine : MonoBehaviourPun
         if (photonView.IsMine)
         {
             ThirdPersonCamera tpc = FindObjectOfType<ThirdPersonCamera>(true);
-            cam = tpc.GetComponentInChildren<Camera>(true);
+            if (tpc != null)
+            {
+                cam = tpc.GetComponentInChildren<Camera>(true);
+            }
             enabled = true;
-            
         }
         else 
         {
@@ -164,25 +176,69 @@ public class PlayerStateMachine : MonoBehaviourPun
         attackMap = new Dictionary<string, AttackData>();
         cooldowns = new Dictionary<string, float>();
 
+        if (attacks == null)
+        {
+            Debug.LogError("Attacks list is null in PlayerStateMachine!");
+            return;
+        }
+
         foreach (var atk in attacks)
         {
+            if (atk == null)
+            {
+                Debug.LogWarning("Null attack entry found in attacks list!");
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(atk.inputActionName))
+            {
+                Debug.LogWarning($"Attack '{atk.attackName}' has no inputActionName assigned!");
+                continue;
+            }
+
             attackMap[atk.inputActionName] = atk;
             cooldowns[atk.inputActionName] = 0f;
-            var inputAction = _playerControls.Attack.Get().FindAction(atk.inputActionName);
-            //Debug.Log(_playerControls.Attack.Get().actions.ToString());
+
+            if (_playerControls == null)
+            {
+                 Debug.LogError("_playerControls is null! InitializeControls must be called before SetUpAttackMaps.");
+                 continue;
+            }
+
+            var attackMapObj = _playerControls.Attack.Get();
+            if (attackMapObj == null)
+            {
+                Debug.LogError("Attack action map not found in PlayerControls!");
+                continue;
+            }
+
+            var inputAction = attackMapObj.FindAction(atk.inputActionName);
             if (inputAction != null)
-                inputAction.performed += ctx => OnAttackInput(atk);
+            {
+                inputAction.performed += ctx => BufferAttackInput(atk.inputActionName);
+            }
             else
-                Debug.LogWarning($"InputAction '{atk.inputActionName}' not found.");
+            {
+                Debug.LogWarning($"InputAction '{atk.inputActionName}' not found for attack '{atk.attackName}'.");
+            }
         }
+
         // Set up Atk Origins as well
-        foreach (var entry in attackOrigins)
+        if (attackOrigins != null)
         {
-            if (!attackOriginMap.ContainsKey(entry.originName))
-                attackOriginMap[entry.originName] = entry.originTransform;
+            foreach (var entry in attackOrigins)
+            {
+                if (entry.originTransform != null && !string.IsNullOrEmpty(entry.originName))
+                {
+                    if (!attackOriginMap.ContainsKey(entry.originName))
+                        attackOriginMap[entry.originName] = entry.originTransform;
+                }
+            }
         }
     }
     // -------------------------- Attack Input manager -------------------------------
+    // OLD METHOD - Replaced by BufferAttackInput
+    /*
     private void OnAttackInput(AttackData atk)
     {
         //Debug.Log("Hello");
@@ -190,6 +246,90 @@ public class PlayerStateMachine : MonoBehaviourPun
         {
             cooldowns[atk.inputActionName] = Time.time + atk.cooldown;
             SwitchState(stateFactory.Attack(atk));
+        }
+    }
+    */
+
+    public void BufferAttackInput(string inputName)
+    {
+        // Clear old buffer if needed or just enqueue
+        if (inputBuffer.Count >= 2) inputBuffer.Dequeue();
+        
+        inputBuffer.Enqueue(inputName);
+        bufferTimer = bufferWindow;
+        
+        // If Idle or Run, immediately consume to start the first attack
+        if (currentState is PlayerIdleState || currentState is PlayerRunState || currentState is PlayerWalkState)
+        {
+            ConsumeBufferedInput();
+        }
+        // If already attacking, the input stays buffered for combo checking during recovery
+    }
+
+    public void ConsumeBufferedInput(List<string> allowedInputs = null)
+    {
+        if (inputBuffer.Count == 0) return;
+
+        string input = inputBuffer.Peek();
+        
+        // If specific inputs required (combo chaining)
+        if (allowedInputs != null && !allowedInputs.Contains(input))
+        {
+            return;
+        }
+
+        // Valid input found
+        inputBuffer.Dequeue();
+        if (attackMap.TryGetValue(input, out AttackData atk))
+        {
+             // Ping Pong Index
+             attackAnimIndex = (attackAnimIndex + 1) % 2;
+             RotateToCameraDirection();
+             SwitchState(stateFactory.Attack(atk));
+        }
+    }
+
+    public void ConsumeBufferedInputForCombo(List<ComboRoute> comboRoutes)
+    {
+        if (inputBuffer.Count == 0) return;
+
+        string input = inputBuffer.Peek();
+        
+        // Find the matching combo route
+        ComboRoute matchingRoute = comboRoutes.Find(route => route.inputAction == input);
+        
+        if (matchingRoute.targetAttack == null)
+        {
+            return;
+        }
+
+        // Valid route found - use the TARGET ATTACK from the route
+        inputBuffer.Dequeue();
+        
+         // Ping Pong Index
+         attackAnimIndex = (attackAnimIndex + 1) % 2;
+         RotateToCameraDirection();
+         SwitchState(stateFactory.Attack(matchingRoute.targetAttack));
+    }
+
+    public void ClearInputBuffer()
+    {
+        if (inputBuffer.Count > 0)
+        {
+            inputBuffer.Clear();
+            bufferTimer = 0;
+        }
+    }
+
+    public void UpdateInputBuffer()
+    {
+        if (inputBuffer.Count > 0)
+        {
+            bufferTimer -= Time.deltaTime;
+            if (bufferTimer <= 0)
+            {
+                inputBuffer.Clear();
+            }
         }
     }
 
@@ -285,15 +425,19 @@ public class PlayerStateMachine : MonoBehaviourPun
     
     void Update()
     {
+        UpdateInputBuffer();
         UpdateGroundStatus();
         HandleJumpTimers();
         HandleMovement();
         HandleGravity();
         
         // Final centralized move
-        Vector3 finalVelocity = horizontalVelocity;
-        finalVelocity.y = velocity.y;
-        characterController.Move(finalVelocity * Time.deltaTime);
+        if (!animator.applyRootMotion)
+        {
+            Vector3 finalVelocity = horizontalVelocity;
+            finalVelocity.y = velocity.y;
+            characterController.Move(finalVelocity * Time.deltaTime);
+        }
 
         HandleRotation();
         currentState.UpdateState();
@@ -327,13 +471,31 @@ public class PlayerStateMachine : MonoBehaviourPun
             else if (isBlockHeld)
             {
                 
-                Debug.Log("Blocking � parry not triggered");
+                Debug.Log("Blocking  parry not triggered");
             }
         }
 
         isBlockJustPressed = false;
         /*----------------------------------------------------------------------------*/
        
+    }
+
+    private void OnAnimatorMove()
+    {
+        if (animator != null && animator.applyRootMotion)
+        {
+            // Get root motion delta
+            Vector3 delta = animator.deltaPosition;
+            
+            // Add manual gravity
+            delta.y = velocity.y * Time.deltaTime;
+            
+            // Move character
+            characterController.Move(delta);
+            
+            // Apply root rotation if available
+            transform.rotation *= animator.deltaRotation;
+        }
     }
 
     void HandleJumpTimers()
@@ -395,7 +557,10 @@ public class PlayerStateMachine : MonoBehaviourPun
 
     public void SwitchState(PlayerBaseState newState)
     {
-        currentState.ExitState();
+        if (currentState != null)
+        {
+            currentState.ExitState();
+        }
         currentState = newState;
         newState.EnterState();
     }
@@ -420,10 +585,22 @@ public class PlayerStateMachine : MonoBehaviourPun
         Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
         return moveDir.normalized;
     }
+
+    public void RotateToCameraDirection()
+    {
+        if (cam == null) return;
+
+        Vector3 camForward = cam.transform.forward;
+        camForward.y = 0;
+        if (camForward.sqrMagnitude > 0.001f)
+        {
+            transform.rotation = Quaternion.LookRotation(camForward);
+        }
+    }
     void UpdateGroundStatus()
     {
         isGrounded = Physics.CheckSphere(groundCheck.position, groundDistance, gLayer);
-        animator.SetBool("IsGrounded", isGrounded);
+        // animator.SetBool("IsGrounded", isGrounded); // Parameter doesn't exist in Animator
         if (isGrounded)
         {
             animator.SetBool("falling", false);
@@ -461,6 +638,30 @@ public class PlayerStateMachine : MonoBehaviourPun
     }
 
 
+    public void ApplyStepOffset(float distance)
+    {
+        if (distance == 0) return;
+        characterController.Move(transform.forward * distance);
+    }
+    
+    public void TriggerHitStop(float duration)
+    {
+        StartCoroutine(HitStopRoutine(duration));
+    }
+
+    private IEnumerator HitStopRoutine(float duration)
+    {
+        if (duration <= 0) yield break;
+
+        float originalAnimatorSpeed = animator.speed;
+        animator.speed = 0.05f; // Almost freeze, but keeps micro-movement
+        
+        // Optionally freeze other things if needed
+        yield return new WaitForSecondsRealtime(duration);
+        
+        animator.speed = originalAnimatorSpeed;
+    }
+    
     //--------------------------- Animation Events Refrences ------------------------------------
     //--------------------------- Animation Events Refrences ------------------------------------
     public void ApplyJumpVelocity()
@@ -483,7 +684,9 @@ public class PlayerStateMachine : MonoBehaviourPun
     public void EndAttack()
     {
         if (currentState is PlayerAttackState atk)
-            SwitchState(stateFactory.Idle());
+        {
+            // SwitchState(stateFactory.Idle()); // Disabled for combo system
+        }
     }
 
 

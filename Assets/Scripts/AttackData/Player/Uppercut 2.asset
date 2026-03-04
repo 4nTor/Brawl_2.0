@@ -10,24 +10,24 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d80f0d3fed866b94ea8dfe04713f3745, type: 3}
-  m_Name: Uppercut
+  m_Name: Uppercut 2
   m_EditorClassIdentifier: 
   attackName: Uppercut
   inputActionName: Uppercut
   damage: 10
   range: 0.6
   cooldown: 0.1
-  animation: {fileID: -203655887218126122, guid: 6eedfb28748e22546969f50a755c7000,
+  animation: {fileID: -203655887218126122, guid: 10c6741b15430994b943e9869a91e6b1,
     type: 3}
   pushForce: 12
   startupTime: 0.1
   activeTime: 0.2
-  recoveryTime: 0.4
+  recoveryTime: 0.5
   cancelStartTime: 0
-  cancelEndTime: 0.5
+  cancelEndTime: 1
   comboRoutes:
   - inputAction: Uppercut
-    targetAttack: {fileID: 11400000, guid: 0937d5f86f9abf047a99a63116c3897f, type: 2}
+    targetAttack: {fileID: 11400000, guid: c634243b99519534897d14f741551259, type: 2}
   hitStopDuration: 0.1
-  stepOffset: 0.3
+  stepOffset: 0
   AttackOriginName: Uppercut

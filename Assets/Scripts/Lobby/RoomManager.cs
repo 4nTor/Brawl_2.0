@@ -47,20 +47,24 @@ public class RoomManager : MonoBehaviourPunCallbacks
         nickNameUI.SetActive(false);
         connectingUI.SetActive(true);
 
-        if (PhotonNetwork.IsConnectedAndReady && PhotonNetwork.NetworkClientState != ClientState.Disconnecting)
+        // Check if we are specifically on the Master Server or in a Lobby
+        bool isReadyForMatchmaking = PhotonNetwork.IsConnectedAndReady && 
+                                     (PhotonNetwork.Server == ServerConnection.MasterServer || PhotonNetwork.InLobby);
+
+        if (isReadyForMatchmaking)
         {
+            Debug.Log("Ready for matchmaking. Joining/Creating room...");
             PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
         }
         else
         {
             attemptJoinOnConnect = true;
-            Debug.Log("Waiting for connection to Master Server...");
+            Debug.Log($"Not ready for matchmaking. State: {PhotonNetwork.NetworkClientState}. Waiting for Master Server...");
             
-            // Should usually be handled by RoomList, but ensure we don't stall
-            if (!PhotonNetwork.IsConnected && !PhotonNetwork.IsConnectedAndReady)
+            if (!PhotonNetwork.IsConnected)
             {
-                // Optionally trigger connection if not started
-                // PhotonNetwork.ConnectUsingSettings(); 
+                Debug.Log("Connecting to Photon...");
+                PhotonNetwork.ConnectUsingSettings();
             }
         }
     }
