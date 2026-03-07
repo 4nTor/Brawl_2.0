@@ -1,71 +1,67 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 using Photon.Pun;
 using Photon.Realtime;
-using Cinemachine;
+using UnityEngine;
 
 public class RoomManager : MonoBehaviourPunCallbacks
 {
     public static RoomManager Instance;
-    // Start is called before the first frame update
-    [Header("Player Object")]
-    public GameObject player;
-
-    [Header("Player Spawn Point")]
-    public Transform spanPoint;
-
-    [Header("Free Look Camera")]
-    public CinemachineFreeLook freeLook;
-
-    [Header("Camera UI")]
-    public GameObject roomCam;
 
     [Header("UI")]
     public GameObject nickNameUI;
     public GameObject connectingUI;
 
-    [Header("Room Name")]
+    [Header("Room Settings")]
     public string roomName = "test";
+    public string gameSceneName = "Level2";
+    public byte maxPlayersPerRoom = 10;
 
-    string nickName = "unnamed";
+    private string nickName = "unnamed";
+    private bool attemptJoinOnConnect = false;
+
     private void Awake()
     {
         Instance = this;
+        PhotonNetwork.AutomaticallySyncScene = true;
     }
-    public void SetNickname(string _name)
+
+    public void SetNickname(string playerName)
     {
-        nickName = _name;
+        nickName = string.IsNullOrWhiteSpace(playerName) ? "unnamed" : playerName.Trim();
     }
-    private bool attemptJoinOnConnect = false;
 
     public void OnJoinButtonPressed()
     {
-        Debug.Log(message: "Connecting. . . ");
-        Debug.Log(roomName);
+        Debug.Log("Connecting...");
 
-        nickNameUI.SetActive(false);
-        connectingUI.SetActive(true);
-
-        // Check if we are specifically on the Master Server or in a Lobby
-        bool isReadyForMatchmaking = PhotonNetwork.IsConnectedAndReady && 
-                                     (PhotonNetwork.Server == ServerConnection.MasterServer || PhotonNetwork.InLobby);
-
-        if (isReadyForMatchmaking)
+        if (nickNameUI != null)
         {
-            Debug.Log("Ready for matchmaking. Joining/Creating room...");
-            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+            nickNameUI.SetActive(false);
         }
-        else
+
+        if (connectingUI != null)
         {
-            attemptJoinOnConnect = true;
-            Debug.Log($"Not ready for matchmaking. State: {PhotonNetwork.NetworkClientState}. Waiting for Master Server...");
-            
-            if (!PhotonNetwork.IsConnected)
-            {
-                Debug.Log("Connecting to Photon...");
-                PhotonNetwork.ConnectUsingSettings();
-            }
+            connectingUI.SetActive(true);
+        }
+
+        PhotonNetwork.NickName = nickName;
+
+        bool readyForMatchmaking = PhotonNetwork.IsConnectedAndReady &&
+                                   (PhotonNetwork.Server == ServerConnection.MasterServer || PhotonNetwork.InLobby);
+
+        if (readyForMatchmaking)
+        {
+            JoinOrCreateConfiguredRoom();
+            return;
+        }
+
+        attemptJoinOnConnect = true;
+        if (!PhotonNetwork.IsConnected)
+        {
+            PhotonNetwork.ConnectUsingSettings();
+        }
+        else if (!PhotonNetwork.InLobby)
+        {
+            PhotonNetwork.JoinLobby();
         }
     }
 
@@ -73,9 +69,7 @@ public class RoomManager : MonoBehaviourPunCallbacks
     {
         if (attemptJoinOnConnect)
         {
-            attemptJoinOnConnect = false;
-            Debug.Log("Connected to Master, Joining Room...");
-            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+            PhotonNetwork.JoinLobby();
         }
     }
 
@@ -84,28 +78,58 @@ public class RoomManager : MonoBehaviourPunCallbacks
         if (attemptJoinOnConnect)
         {
             attemptJoinOnConnect = false;
-            Debug.Log("Joined Lobby, Joining Room...");
-            PhotonNetwork.JoinOrCreateRoom(roomName, new RoomOptions(), null);
+            JoinOrCreateConfiguredRoom();
         }
     }
+
     public override void OnJoinedRoom()
     {
-        Debug.Log("Room Joined");
-        roomCam.SetActive(false);
-        SpawnPlayer();
+        Debug.Log($"Joined room '{PhotonNetwork.CurrentRoom?.Name}'. Loading game scene '{gameSceneName}'.");
+
+        if (PhotonNetwork.IsMasterClient)
+        {
+            PhotonNetwork.LoadLevel(gameSceneName);
+        }
     }
 
-    public void SpawnPlayer()
+    public override void OnJoinRoomFailed(short returnCode, string message)
     {
-        GameObject _player = PhotonNetwork.Instantiate(player.name, spanPoint.position, Quaternion.identity);
-        _player.GetComponent<PlayerHealth>().isLocalPlayer = true;
-        PhotonView view = _player.GetComponent<PhotonView>();
-        view.RPC("SetPlayerName", RpcTarget.AllBuffered, nickName);
-        if (view != null && view.IsMine && freeLook != null)
+        Debug.LogWarning($"Join room failed: {returnCode} - {message}");
+        ShowJoinUI();
+    }
+
+    public override void OnCreateRoomFailed(short returnCode, string message)
+    {
+        Debug.LogWarning($"Create room failed: {returnCode} - {message}");
+        ShowJoinUI();
+    }
+
+    public override void OnDisconnected(DisconnectCause cause)
+    {
+        Debug.LogWarning($"Disconnected from Photon: {cause}");
+        ShowJoinUI();
+    }
+
+    private void JoinOrCreateConfiguredRoom()
+    {
+        RoomOptions roomOptions = new RoomOptions
         {
-            Transform lookAt = _player.transform.GetChild(1);
-            freeLook.Follow = lookAt;
-            freeLook.LookAt = lookAt;
+            MaxPlayers = maxPlayersPerRoom
+        };
+
+        PhotonNetwork.JoinOrCreateRoom(roomName, roomOptions, TypedLobby.Default);
+    }
+
+    private void ShowJoinUI()
+    {
+        if (nickNameUI != null)
+        {
+            nickNameUI.SetActive(true);
+        }
+
+        if (connectingUI != null)
+        {
+            connectingUI.SetActive(false);
         }
     }
 }

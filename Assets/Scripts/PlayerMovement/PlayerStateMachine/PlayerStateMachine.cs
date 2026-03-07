@@ -134,24 +134,25 @@ public class PlayerStateMachine : MonoBehaviourPun
         stateFactory = new PlayerStateFactory(this);
         currentState = stateFactory.Idle();
         currentState.EnterState();
+    }
 
+    void Start()
+    {
         // Photon Setup
         if (photonView.IsMine)
         {
-            ThirdPersonCamera tpc = FindObjectOfType<ThirdPersonCamera>(true);
-            if (tpc != null)
+            if (cam == null)
             {
-                cam = tpc.GetComponentInChildren<Camera>(true);
+                cam = Camera.main;
             }
             enabled = true;
         }
         else 
         {
             enabled = false;
-        
         }
+        
         int targetLayer = photonView.IsMine ? LayerMask.NameToLayer("Player") : LayerMask.NameToLayer("Enemy");
-
         SetLayerRecursively(gameObject, targetLayer);
     }
     void SetLayerRecursively(GameObject obj, int newLayer)
@@ -573,7 +574,8 @@ public class PlayerStateMachine : MonoBehaviourPun
         Vector3 direction = new Vector3(moveInput.x, 0f, moveInput.y).normalized;
         if (direction.magnitude >= 0.1f)
         {
-            float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + cam.transform.eulerAngles.y;
+            float camAngle = (cam != null) ? cam.transform.eulerAngles.y : 0f;
+            float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + camAngle;
             float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnVelocity, TurnVelocity);
             transform.rotation = Quaternion.Euler(0f, angle, 0f);
         }
@@ -581,7 +583,8 @@ public class PlayerStateMachine : MonoBehaviourPun
 
     public Vector3 GetMoveDirection(Vector3 direction)
     {
-        float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + cam.transform.eulerAngles.y;
+        float camAngle = (cam != null) ? cam.transform.eulerAngles.y : 0f;
+        float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + camAngle;
         Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
         return moveDir.normalized;
     }
